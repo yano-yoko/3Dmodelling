@@ -11,7 +11,6 @@ import cv2
 import argparse
 
 photosDirPath = 'D:/sdk/selected/'#100個づつに分けた写真フォルダ
-photosDir_lists = os.listdir(photosDirPath)
 inputFilePath = 'D:/sdk/LiDAR/results_video_traj.txt'#video軌跡
 projectDirPath = 'D:/sdk/project'#projectが作成されるディレクトリ
 zebcamPath = 'F:/zeb-cam.opt'
@@ -56,9 +55,10 @@ def save_frame_range_sec():
     step_sec = 1 / round(org_fps)#何秒に1枚か
     sec = start_sec#開始秒
 
+    os.makedirs(photo_path, exist_ok=True)
+    
     while sec < stop_sec:#終了秒になるまで
-
-        os.makedirs(photo_path, exist_ok=True)
+        
         base_path = os.path.join(photo_path, basename)#~/photo_〇/frame_
         n = round(org_fps * sec)#現在のフレーム位置
         cap.set(cv2.CAP_PROP_POS_FRAMES, n)# 再生位置（フレーム位置）をｎに設定
@@ -77,6 +77,7 @@ def save_frame_range_sec():
 
 def select_high_laplacian():
 
+    os.makedirs(selected_path, exist_ok=True)
     image_file=os.listdir(photo_path)
     no=0
     for cnt, idx in enumerate(range(n, len(os.listdir(photo_path))-n, n*2+1)):#2個前後をみたいので、前から2つから後ろから２つまで
@@ -207,7 +208,8 @@ def main():
 
     blockVec=itwincapturemodeler.BlockVec()
     blockVec.append(block)
-    
+
+    photosDir_lists = os.listdir(photosDirPath)
     for photosDir_list in photosDir_lists:#100枚の画像のディレクトリ
         
         # --------------------------------------------------------------------
