@@ -1,18 +1,3 @@
-#!/usr/bin/env python
-# ******************************************************************************
-# Copyright (c) 2018 Bentley Systems, Incorporated. All rights reserved.
-# ******************************************************************************
-# iTwin Capture Modeler Python SDK - example script
-#
-# Script: import_txt.py
-# Purpose : import a custom block format
-# Keywords: block creation, block import, project creation
-#
-# Script description:
-# - creates a new CCM project,
-# - reads a custom block definition from a TXT file, and creates the corresponding block.
-# - export block to KML
-# ******************************************************************************
 import sys
 import os
 import csv
@@ -22,21 +7,110 @@ import time
 import bs4
 from distutils.util import strtobool
 import shutil
+import cv2
+import argparse
 
-photosDirPath = './selected/'#100個づつに分けた写真フォルダ
+photosDirPath = 'D:/sdk/selected/'#100個づつに分けた写真フォルダ
 photosDir_lists = os.listdir(photosDirPath)
-inputFilePath = './LiDAR/results_video_traj.txt'#video軌跡
-projectDirPath = './project'#projectが作成されるディレクトリ
+inputFilePath = 'D:/sdk/LiDAR/results_video_traj.txt'#video軌跡
+projectDirPath = 'D:/sdk/project'#projectが作成されるディレクトリ
 zebcamPath = 'F:/zeb-cam.opt'
-txtFilePath = './LiDAR/results_traj.txt'
-lazFilePath = './LiDAR/withceiling.subsampled.laz'
+txtFilePath = 'D:/sdk/LiDAR/results_traj.txt'
+
+video_path='D:/sdk/LiDAR/video.mp4'#ビデオのフォルダ
+photo_path ="D:/sdk/photo"#指定したfpsでフレームを出力
+selected_path = 'D:/sdk/selected/selected'#選ばれた（ブラーがない）写真のフォルダ(selected_0...)
+basename='frame'#切り出した時のファイル名（frame_〇.jpg)
+ext='jpg'
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-s", "--start", type=int)
+parser.add_argument("-e", "--end", type=int)
+parser.add_argument("-f", "--fps", type=float)
+parser.add_argument("-n", "--num_search", type=int)#前後何フレーム探索するか
+parser.add_argument("-l", "--laz", type=str)
+
+args = parser.parse_args()
+lazFilePath = 'D:/sdk/LiDAR/' + args.laz#読み込むlazファイル
+start_sec=args.start#切り出し開始時刻
+stop_sec=args.end#切り出し終了時刻
+fps=args.fps#必要な周波数(何枚/何秒の写真が必要か）
+n=args.num_search#前後何フレームを探索するか
 
 PHOTO_COL = 9#trajの画像名カラム
 X_COL = 0#xカラム
 Y_COL = 1#yカラム
 Z_COL = 2#zカラム
 
+def save_frame_range_sec():
+    
+    cap = cv2.VideoCapture(video_path)#動画の読み込み
+
+    if not cap.isOpened():#画像が起動できたか確認
+        return
+    
+    digit = len(str(int(cap.get(cv2.CAP_PROP_FRAME_COUNT))))#動画の合計フレーム数の桁数
+
+    org_fps = cap.get(cv2.CAP_PROP_FPS)#1秒当たりのフレーム数を取得
+    step_sec = 1 / round(org_fps)#何秒に1枚か
+    sec = start_sec#開始秒
+
+    while sec < stop_sec:#終了秒になるまで
+
+        os.makedirs(photo_path, exist_ok=True)
+        base_path = os.path.join(photo_path, basename)#~/photo_〇/frame_
+        n = round(org_fps * sec)#現在のフレーム位置
+        cap.set(cv2.CAP_PROP_POS_FRAMES, n)# 再生位置（フレーム位置）をｎに設定
+        ret, frame = cap.read()#retは画像情報が取れたか否か、frameは画像情報
+        
+        if ret:#画像情報が取れてたら
+            #~/photo_〇/frame_,フレーム数,.jpg の名前で画像出力
+            cv2.imwrite(
+                '{}_{}.{}'.format(
+                    base_path, str(n).zfill(digit), ext #zfill(digit) digit桁に右寄せゼロ埋め
+                ),frame
+            )
+        else:
+            return
+        sec += step_sec
+
+def select_high_laplacian():
+
+    image_file=os.listdir(photo_path)
+    no=0
+    for cnt, idx in enumerate(range(n, len(os.listdir(photo_path))-n, n*2+1)):#2個前後をみたいので、前から2つから後ろから２つまで
+    
+        if cnt%100==0: #100個に達成したら次のディn=2レクトリ作成
+            w_path = f'{selected_path}_{no}/'
+            os.makedirs(w_path, exist_ok=True)
+            no+=1
+            
+        ll_idx=[]
+        ll_var=[]
+        for i in [0]+[x+1 if y%2==0 else -(x+1) for x in range(n) for y in range(2)]:#[0,1,-1,2,-2]
+
+            image = cv2.imread(f'{photo_path}/{image_file[idx+i]}')
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) # グレースケースに変換
+            laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+    
+            if laplacian.var() >=100:#ブラーがなければ出力
+                cv2.imwrite(w_path + image_file[idx+i], image)
+                break
+    
+            ll_idx += [idx+i]
+            ll_var += [laplacian.var()]
+            df = pd.DataFrame({'idx':ll_idx, 'var':ll_var})
+        
+        if len(df) == 5: #最後まで出力されなかったら、中でもラプラシアン値の高いものを出力
+            cv2.imwrite(w_path + image_file[int(df.iloc[df['var'].idxmax()].idx)], image)
+                    
 def main():
+
+    print('output photo_frame...')
+    save_frame_range_sec()
+    print('output selected_photo_frame...')
+    select_high_laplacian()
+    
     if itwincapturemodeler.edition()!='Center':
         print("edition error %s can not use" % itwincapturemodeler.edition())#Licenceと違うeditionだったら実行しない
         sys.exit(0)
@@ -181,7 +255,7 @@ def main():
         #ブロックが内部的に変更されたことを警告するために、ブロックを直接変更した後に呼び出す必要があるため、次のプロジェクトの保存でブロックが確実に保存されるようにします。
         block.exportToKML(os.path.join(projectDirPath, 'block.kml'))
         #視覚化に適した KML 図面に写真の位置を書き出します
-
+        #print(photogroup.principalpoint.x)
         err = project.writeToFile()#プロジェクトの保存
         if not err.isNone():
             print(err.message)
@@ -275,105 +349,115 @@ def main():
         if not err.isNone():
             print(err.message)
             sys.exit(0)       
-
+        
+    # blockVec=itwincapturemodeler.BlockVec()
+    # blockVec.append('Block_1')#pointcloud
+    # for i in range(4):
+    #     blockVec.append(f'Block_{i*2+2} - AT')
     project.mergeBlocks(blockVec)
-    block=project.getBlock(project.getNumBlocks()-1)
+    block = project.getBlock(project.getNumBlocks()-1)
 
     err = project.writeToFile()#プロジェクトの保存
     if not err.isNone():
         print(err.message)
         sys.exit(0)       
 
-    if(0):
-        # --------------------------------------------------------------------
-        # create reconstruction
-        # --------------------------------------------------------------------
-        reconstruction = itwincapturemodeler.Reconstruction(block)
-        block.addReconstruction(reconstruction)
-    
-        reconstruction.setDescription('Automatically generated from python script')
-    
-        # ------
-        # Tiling
-        # ------
-        tiling = reconstruction.getTiling()
-        tiling.tilingMode = itwincapturemodeler.TilingMode.TilingMode_regularPlanarGrid
-        tiling.tileSize = 5
-        #tiling.customOrigin = itwincapturemodeler.Point3d(651500, 6861500, 0)
-        tiling.autoOrigin = True
-    
-        reconstruction.setTiling(tiling)
-    
-        # -------------------
-        # Processing settings
-        # -------------------
-        settings = reconstruction.getSettings()
         
-        settings.geometryPrecisionMode = itwincapturemodeler.GeometryPrecisionMode.GeometryPrecision_extra
-        
-        #settings.holeFillingMode = itwincapturemodeler.HoleFillingMode.HoleFilling_allHoles
-        
-        settings.holeFillingMode = itwincapturemodeler.HoleFillingMode.HoleFilling_smallHoles
-        
-        #settings.pairSelectionMode = itwincapturemodeler.ReconstructionPairSelectionMode.ReconstructionPairSelection_forStructuredAerialDataset
-        
-        settings.pairSelectionMode = itwincapturemodeler.ReconstructionPairSelectionMode.ReconstructionPairSelection_generic
-        
-        settings.photosUsedForGeometry   = itwincapturemodeler.ReconstructionPhotosUsedForGeometry.ReconstructionPhotosUsedForGeometry_none
+    # --------------------------------------------------------------------
+    # create reconstruction
+    # --------------------------------------------------------------------
+    reconstruction = itwincapturemodeler.Reconstruction(block)
+    block.addReconstruction(reconstruction)
+
+    reconstruction.setDescription('Automatically generated from python script')
+
+    # ------
+    # Tiling
+    # ------
+    tiling = reconstruction.getTiling()
+    tiling.tilingMode = itwincapturemodeler.TilingMode.TilingMode_regularPlanarGrid
+    #tiling.tileSize = 5
+    tiling.targetMemoryUse = 14
+    #tiling.customOrigin = itwincapturemodeler.Point3d(651500, 6861500, 0)
+    tiling.autoOrigin = True
+
+    reconstruction.setTiling(tiling)
+
+    # -------------------
+    # Processing settings
+    # -------------------
+    settings = reconstruction.getSettings()
     
-        reconstruction.setSettings(settings)
+    settings.geometryPrecisionMode = itwincapturemodeler.GeometryPrecisionMode.GeometryPrecision_extra
     
-        print(vars(settings))
-        block.setChanged()
+    #settings.holeFillingMode = itwincapturemodeler.HoleFillingMode.HoleFilling_allHoles
     
-        # --------------------------------------------------------------------
-        # Save project
-        # --------------------------------------------------------------------
-        err = project.writeToFile()
-        if not err.isNone():
-            print(err.message)
-            sys.exit(0)
+    settings.holeFillingMode = itwincapturemodeler.HoleFillingMode.HoleFilling_smallHoles
     
-        # --------------------------------------------------------------------
-        # Display actual reconstruction settings
-        # --------------------------------------------------------------------
-        print()
-        print('Reconstruction settings:')
+    #settings.pairSelectionMode = itwincapturemodeler.ReconstructionPairSelectionMode.ReconstructionPairSelection_forStructuredAerialDataset
     
-        print('Tiling:')
-        tiling = reconstruction.getTiling()
-        print('-Mode:', tiling.tilingMode)
-        print('-TileSize:', tiling.tileSize)
+    settings.pairSelectionMode = itwincapturemodeler.ReconstructionPairSelectionMode.ReconstructionPairSelection_generic
     
-        # if tiling.customOrigin:
-        #     print('-CustomOrigin: (%s,%s,%s)' % (tiling.customOrigin.x, tiling.customOrigin.y, tiling.customOrigin.z))
+    settings.photosUsedForGeometry = itwincapturemodeler.ReconstructionPhotosUsedForGeometry.ReconstructionPhotosUsedForGeometry_none
+
+    reconstruction.setSettings(settings)
+
+    print(vars(settings))
+    block.setChanged()
+
+    # --------------------------------------------------------------------
+    # Save project
+    # --------------------------------------------------------------------
+    err = project.writeToFile()
+    if not err.isNone():
+        print(err.message)
+        sys.exit(0)
+
+    # --------------------------------------------------------------------
+    # Display actual reconstruction settings
+    # --------------------------------------------------------------------
+    print()
+    print('Reconstruction settings:')
+
+    print('Tiling:')
+    tiling = reconstruction.getTiling()
+    print('-Mode:', tiling.tilingMode)
+    print('-TileSize:', tiling.tileSize)
+
+    # if tiling.customOrigin:
+    #     print('-CustomOrigin: (%s,%s,%s)' % (tiling.customOrigin.x, tiling.customOrigin.y, tiling.customOrigin.z))
+
+    print()
+
+    print('Processing settings:')
+    settings = reconstruction.getSettings()
+    print('-Geometry precision mode:', settings.geometryPrecisionMode)
+    print('-Hole filling mode:', settings.holeFillingMode)
+    print('-Pair selection mode:', settings.pairSelectionMode)
+
+    print()
+    print('Number of tiles:', reconstruction.getNumInternalTiles())
+
+    # define a production for one tile
+    production = itwincapturemodeler.Production(reconstruction)
+    reconstruction.addProduction(production)
     
-        print()
+    # set production format and destination
+    production.setDriverName('OBJ')
+    production.setDestination(projectDirPath)
     
-        print('Processing settings:')
-        settings = reconstruction.getSettings()
-        print('-Geometry precision mode:', settings.geometryPrecisionMode)
-        print('-Hole filling mode:', settings.holeFillingMode)
-        print('-Pair selection mode:', settings.pairSelectionMode)
+    # set production options
+    driverOptions = production.getDriverOptions()
+    driverOptions.put_int('TextureCompressionQuality', 100)
+    production.setDriverOptions(driverOptions)
     
-        print()
-        print('Number of tiles:', reconstruction.getNumInternalTiles())
-    
-        # define a production for one tile
-        production = itwincapturemodeler.Production(reconstruction)
-        reconstruction.addProduction(production)
-        
-        # set production format and destination
-        production.setDriverName('OBJ')
-        production.setDestination(projectDirPath)
-        
-        # set production options
-        driverOptions = production.getDriverOptions()
-        driverOptions.put_int('TextureCompressionQuality', 100)
-        production.setDriverOptions(driverOptions)
-        
-        # sumbit production processing
-        production.submitProcessing()
+    # sumbit production processing
+    production.submitProcessing()
+
+    err = project.writeToFile()#プロジェクトの保存
+    if not err.isNone():
+        print(err.message)
+        sys.exit(0) 
     
 if __name__ == '__main__':
     main()
