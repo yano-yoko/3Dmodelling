@@ -16,10 +16,10 @@ python modelling.py –s [動画開始秒] –e [動画終了秒] –f [fps] –
 ・フレームにブラーがあれば、前後nフレームを探索する。すべてブラーがあった場合は最も少ないフレームを選択、selectedに出力される
 ・軌跡の読み込み、点群の読み込み、空中三角測量、各空中三角測量結果のマージ、 再構築が行われ、D:/SDK/project にプロジェクトが保存される
 
-４． modelling.py の実行が終了したら、D:/SDK/project /project.ccmを開く
+５． modelling.py の実行が終了したら、D:/SDK/project /project.ccmを開く
 Block_N(merge block)-Reconstruction_1-Production_1をクリックすると、下図のように、スクリプトの実行が終わってもGUI上ではproduction作成中となっている。Completedが出たら終了。
 （数10分～数時間かかる）
 
-５． D:/SDK/project /Dataの中の～.objファイルを検索して、MeshLabにドラッグアンドドロップ。
+６． D:/SDK/project /Dataの中の～.objファイルを検索して、MeshLabにドラッグアンドドロップ。
 3Dモデルが表示される
 （ GUI上でProduction_1を選択してResultタブを開いても見られる。）
