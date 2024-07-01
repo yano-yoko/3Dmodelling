@@ -29,6 +29,7 @@ parser.add_argument("-e", "--end", type=int)
 parser.add_argument("-f", "--fps", type=float)
 parser.add_argument("-n", "--num_search", type=int)#前後何フレーム探索するか
 parser.add_argument("-l", "--laz", type=str)
+parser.add_argument("-m", "--movie", type=int)
 
 args = parser.parse_args()
 lazFilePath = 'D:/sdk/LiDAR/' + args.laz#読み込むlazファイル
@@ -106,10 +107,11 @@ def select_high_laplacian():
                     
 def main():
 
-    print('output photo_frame...')
-    save_frame_range_sec()
-    print('output selected_photo_frame...')
-    select_high_laplacian()
+    if bool(args.movie):
+        print('output photo_frame...')
+        save_frame_range_sec()
+        print('output selected_photo_frame...')
+        select_high_laplacian()
     
     if itwincapturemodeler.edition()!='Center':
         print("edition error %s can not use" % itwincapturemodeler.edition())#Licenceと違うeditionだったら実行しない
